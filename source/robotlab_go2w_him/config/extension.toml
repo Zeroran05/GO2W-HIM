@@ -1,0 +1,19 @@
+[package]
+version = "0.1.0"
+category = "robotics"
+title = "RobotLab Go2W HIM IsaacLab"
+description = "RobotLab-style Go2W locomotion with HIM representation learning."
+author = "zhuran"
+maintainer = "zhuran"
+repository = ""
+keywords = ["isaaclab", "robotlab", "go2w", "himloco", "reinforcement-learning"]
+
+[dependencies]
+"isaaclab" = {}
+"isaaclab_assets" = {}
+"isaaclab_rl" = {}
+"isaaclab_tasks" = {}
+
+[[python.module]]
+name = "robotlab_go2w_him"
+

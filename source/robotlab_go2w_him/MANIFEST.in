@@ -1,0 +1,3 @@
+recursive-include config *.toml
+recursive-include data *
+
