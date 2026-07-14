@@ -235,7 +235,7 @@ class UnitreeGo2WRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.is_terminated.weight = 0
 
         # Root penalties
-        self.rewards.lin_vel_z_l2.weight = -1.5
+        self.rewards.lin_vel_z_l2.weight = -1.0
         self.rewards.ang_vel_xy_l2.weight = -0.05
         self.rewards.flat_orientation_l2.weight = -0.5
         self.rewards.base_height_l2.weight = -5.0
