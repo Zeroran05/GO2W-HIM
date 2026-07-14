@@ -46,6 +46,54 @@ def height_scan_him(env, sensor_cfg: SceneEntityCfg, offset: float = 0.5, scale:
     return heights * scale
 
 
+def robot_centric_occupancy(
+    env,
+    sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    z_range: tuple[float, float] = (-0.8, 1.0),
+    resolution: float = 0.1,
+    shape: tuple[int, int, int] = (18, 25, 16),
+) -> torch.Tensor:
+    """Build the HIMLoco gravity-aligned local occupancy grid from vertical terrain rays.
+
+    The returned int8 tensor uses [z, x, y] layout. Unknown cells are -1,
+    observed free cells are 0, and the terrain surface cell is 1.
+    """
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
+    z_bins, x_bins, y_bins = shape
+    expected_rays = x_bins * y_bins
+
+    ray_hits_z = sensor.data.ray_hits_w[..., 2]
+    if ray_hits_z.shape[1] != expected_rays:
+        raise ValueError(
+            f"occupancy scanner expected {expected_rays} rays for shape {shape}, got {ray_hits_z.shape[1]}"
+        )
+
+    base_z = asset.data.root_pos_w[:, 2].unsqueeze(1)
+    surface_z = (ray_hits_z - base_z).reshape(env.num_envs, x_bins, y_bins)
+    valid = torch.isfinite(surface_z)
+
+    z_centers = torch.arange(z_bins, device=env.device, dtype=surface_z.dtype) * resolution
+    z_centers = (z_centers + z_range[0] + 0.5 * resolution).view(1, z_bins, 1, 1)
+    surface = surface_z.unsqueeze(1)
+    valid = valid.unsqueeze(1)
+
+    occupancy = torch.full(
+        (env.num_envs, z_bins, x_bins, y_bins), -1, dtype=torch.int8, device=env.device
+    )
+    free = valid & (z_centers > surface + 0.5 * resolution)
+    occupancy[free] = 0
+
+    in_grid = valid & (surface >= z_range[0]) & (surface < z_range[1])
+    occupied = in_grid & (torch.abs(z_centers - surface) <= 0.5 * resolution)
+    occupancy[occupied] = 1
+
+    below_grid = valid & (surface < z_range[0])
+    occupancy[below_grid.expand_as(occupancy)] = 0
+    return occupancy
+
+
 def contact_forces_normalized(
     env, sensor_cfg: SceneEntityCfg, force_range: tuple[float, float] = (0.0, 50.0)
 ) -> torch.Tensor:

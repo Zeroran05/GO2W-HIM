@@ -12,10 +12,46 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+import numpy as np
 import torch
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+def command_lin_vel_x_curriculum(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    command_name: str = "base_velocity",
+    reward_name: str = "track_lin_vel_xy_exp",
+    max_curriculum: float = 1.5,
+    increment: float = 0.2,
+    threshold: float = 0.8,
+    tracking_reward_scale: float = 1.5,
+):
+    """Match the HIMLoco x-velocity curriculum for low/high-speed environment groups."""
+    command_term = env.command_manager.get_term(command_name)
+    if env.common_step_counter % env.max_episode_length != 0:
+        return torch.tensor(command_term.cfg.ranges.lin_vel_x[1], device=env.device)
+
+    env_ids = torch.as_tensor(env_ids, device=env.device, dtype=torch.long)
+    low_vel_env_ids = env_ids[env_ids > (env.num_envs * 0.2)]
+    high_vel_env_ids = env_ids[env_ids < (env.num_envs * 0.2)]
+    if len(low_vel_env_ids) == 0 or len(high_vel_env_ids) == 0:
+        return torch.tensor(command_term.cfg.ranges.lin_vel_x[1], device=env.device)
+
+    episode_sums = env.reward_manager._episode_sums[reward_name]
+    low_tracking = torch.mean(episode_sums[low_vel_env_ids]) / env.max_episode_length
+    high_tracking = torch.mean(episode_sums[high_vel_env_ids]) / env.max_episode_length
+    tracking_threshold = threshold * tracking_reward_scale * env.step_dt
+    if low_tracking > tracking_threshold and high_tracking > tracking_threshold:
+        lo, hi = command_term.cfg.ranges.lin_vel_x
+        command_term.cfg.ranges.lin_vel_x = (
+            float(np.clip(lo - increment, -max_curriculum, 0.0)),
+            float(np.clip(hi + increment, 0.0, max_curriculum)),
+        )
+
+    return torch.tensor(command_term.cfg.ranges.lin_vel_x[1], device=env.device)
 
 
 def command_levels_lin_vel(

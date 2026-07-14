@@ -26,7 +26,7 @@ class UniformThresholdVelocityCommand(mdp.UniformVelocityCommand):
     - For pit terrains: only allow forward movement (no lateral or rotational movement)
     """
 
-    cfg: mdp.UniformThresholdVelocityCommandCfg  # type: ignore
+    cfg: "UniformThresholdVelocityCommandCfg"
     """The configuration of the command generator."""
 
     def __init__(self, cfg: mdp.UniformThresholdVelocityCommandCfg, env: ManagerBasedEnv):
@@ -41,22 +41,55 @@ class UniformThresholdVelocityCommand(mdp.UniformVelocityCommand):
         self.was_on_pit = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
     def _resample_command(self, env_ids: Sequence[int]):
-        """Resample velocity commands with threshold."""
-        super()._resample_command(env_ids)
-        # set small commands to zero
-        self.vel_command_b[env_ids, :2] *= (torch.norm(self.vel_command_b[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+        """Match the HIMLoco low/high-speed command split and thresholding."""
+        env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+        random_values = torch.empty(len(env_ids), device=self.device)
+
+        # Most environments retain the original HIMLoco low-speed x range.
+        self.vel_command_b[env_ids, 0] = random_values.uniform_(-1.0, 1.0)
+        self.vel_command_b[env_ids, 1] = random_values.uniform_(*self.cfg.ranges.lin_vel_y)
+        if self.cfg.heading_command:
+            self.heading_target[env_ids] = random_values.uniform_(*self.cfg.ranges.heading)
+            self.is_heading_env[env_ids] = True
+        else:
+            self.vel_command_b[env_ids, 2] = random_values.uniform_(*self.cfg.ranges.ang_vel_z)
+
+        # The first 20% of environments use the curriculum-expanded x range.
+        high_vel_env_ids = env_ids[env_ids < (self.num_envs * 0.2)]
+        if len(high_vel_env_ids) > 0:
+            high_speed_values = torch.empty(len(high_vel_env_ids), device=self.device)
+            self.vel_command_b[high_vel_env_ids, 0] = high_speed_values.uniform_(*self.cfg.ranges.lin_vel_x)
+            self.vel_command_b[high_vel_env_ids, 1:2] *= (
+                torch.norm(self.vel_command_b[high_vel_env_ids, 0:1], dim=1) < 1.0
+            ).unsqueeze(1)
+
+        self.vel_command_b[env_ids, :2] *= (
+            torch.norm(self.vel_command_b[env_ids, :2], dim=1) > self.cfg.small_command_threshold
+        ).unsqueeze(1)
+        self.is_standing_env[env_ids] = False
 
     def _update_command(self):
         """Update commands and apply terrain-aware restrictions in real-time.
 
         This function:
-        1. Calls parent's update to handle heading and standing envs
+        1. Applies the HIMLoco heading controller
         2. Checks which robots are currently on pit terrain
         3. For robots leaving pits: resamples their commands
         4. For robots on pits: restricts to forward-only movement and sets heading to 0
         """
-        # First, call parent's update command
-        super()._update_command()
+        # Match HIMLoco heading control. Its clip is intentionally independent
+        # from the configured direct-yaw sampling range.
+        if self.cfg.heading_command:
+            heading_env_ids = self.is_heading_env.nonzero(as_tuple=False).flatten()
+            heading_error = torch.atan2(
+                torch.sin(self.heading_target[heading_env_ids] - self.robot.data.heading_w[heading_env_ids]),
+                torch.cos(self.heading_target[heading_env_ids] - self.robot.data.heading_w[heading_env_ids]),
+            )
+            self.vel_command_b[heading_env_ids, 2] = torch.clip(
+                self.cfg.heading_control_stiffness * heading_error,
+                min=self.cfg.heading_ang_vel_clip[0],
+                max=self.cfg.heading_ang_vel_clip[1],
+            )
 
         # Check which robots are currently on pit terrain (real-time check every step)
         on_pits = is_robot_on_terrain(self._env, "pits")
@@ -90,6 +123,9 @@ class UniformThresholdVelocityCommandCfg(mdp.UniformVelocityCommandCfg):
     """Configuration for the uniform threshold velocity command generator."""
 
     class_type: type = UniformThresholdVelocityCommand
+    max_curriculum: float = 1.5
+    small_command_threshold: float = 0.2
+    heading_ang_vel_clip: tuple[float, float] = (-2.0, 2.0)
 
 
 class DiscreteCommandController(CommandTerm):

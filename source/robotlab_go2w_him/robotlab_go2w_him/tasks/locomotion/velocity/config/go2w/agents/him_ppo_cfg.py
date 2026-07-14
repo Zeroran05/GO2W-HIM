@@ -1,16 +1,18 @@
 """HIM PPO configuration for the RobotLab-style Go2W task."""
 
+from robotlab_go2w_him.tasks.locomotion.velocity.config.go2w.rough_env_cfg import USE_OCCUPANCY
+
 
 def get_go2w_him_train_cfg() -> dict:
     return {
         "seed": 1,
-        "use_occupancy": False,
+        "use_occupancy": USE_OCCUPANCY,
         "policy": {
             "init_noise_std": 1.0,
             "actor_hidden_dims": [512, 256, 128],
             "critic_hidden_dims": [512, 256, 128],
             "activation": "elu",
-            "use_occupancy": False,
+            "use_occupancy": USE_OCCUPANCY,
         },
         "algorithm": {
             "value_loss_coef": 1.0,
@@ -29,7 +31,7 @@ def get_go2w_him_train_cfg() -> dict:
         "runner": {
             "policy_class_name": "HIMActorCritic",
             "algorithm_class_name": "HIMPPO",
-            "num_steps_per_env": 24,
+            "num_steps_per_env": 48,
             "max_iterations": 20000,
             "save_interval": 200,
             "experiment_name": "robotlab_go2w_him",
@@ -39,4 +41,3 @@ def get_go2w_him_train_cfg() -> dict:
             "profile_timing": False,
         },
     }
-

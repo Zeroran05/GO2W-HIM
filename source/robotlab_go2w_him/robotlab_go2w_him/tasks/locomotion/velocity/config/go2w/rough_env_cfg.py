@@ -20,6 +20,10 @@ from robotlab_go2w_him.tasks.locomotion.velocity.velocity_env_cfg import (
 from robotlab_go2w_him.assets import ROBOTLAB_GO2W_CFG  # isort: skip
 
 
+# Single switch for the 3D occupancy scanner, observation group, and HIM encoder.
+USE_OCCUPANCY = False
+
+
 GO2W_JOINT_NAMES = [
     "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint", "FL_foot_joint",
     "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint", "FR_foot_joint",
@@ -125,8 +129,23 @@ class UnitreeGo2WHIMObservationsCfg:
             self.enable_corruption = False
             self.concatenate_terms = True
 
+    @configclass
+    class OccCfg(ObsGroup):
+        occupancy = ObsTerm(
+            func=mdp.robot_centric_occupancy,
+            params={
+                "sensor_cfg": SceneEntityCfg("occupancy_scanner"),
+                "asset_cfg": SceneEntityCfg("robot"),
+            },
+        )
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = False
+
     policy: PolicyCfg = PolicyCfg()
     critic: CriticCfg = CriticCfg()
+    occ: OccCfg = OccCfg()
 
 
 @configclass
@@ -181,6 +200,12 @@ class UnitreeGo2WRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.robot = ROBOTLAB_GO2W_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
         self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
+        if not USE_OCCUPANCY:
+            self.scene.occupancy_scanner = None
+            self.observations.occ = None
+        elif self.scene.occupancy_scanner is not None:
+            self.scene.occupancy_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
+            self.scene.occupancy_scanner.update_period = self.decimation * self.sim.dt
 
         # ------------------------------Events------------------------------
         self.events.randomize_reset_base.params = {
@@ -300,15 +325,16 @@ class UnitreeGo2WRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None
 
         # ------------------------------Curriculums------------------------------
-        # self.curriculum.command_levels_lin_vel.params["range_multiplier"] = (0.2, 1.0)
-        # self.curriculum.command_levels_ang_vel.params["range_multiplier"] = (0.2, 1.0)
-        self.curriculum.command_levels_lin_vel = None
+        self.curriculum.command_levels_lin_vel.func = mdp.command_lin_vel_x_curriculum
+        self.curriculum.command_levels_lin_vel.params = {
+            "command_name": "base_velocity",
+            "reward_name": "track_lin_vel_xy_exp",
+            "max_curriculum": 1.5,
+            "increment": 0.2,
+            "threshold": 0.8,
+            "tracking_reward_scale": 1.5,
+        }
         self.curriculum.command_levels_ang_vel = None
-
-        # ------------------------------Commands------------------------------
-        # self.commands.base_velocity.ranges.lin_vel_x = (-1.5, 1.5)
-        # self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
-        # self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
 
 @configclass
