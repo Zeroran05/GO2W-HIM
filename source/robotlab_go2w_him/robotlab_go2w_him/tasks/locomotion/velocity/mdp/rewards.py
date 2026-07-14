@@ -104,6 +104,27 @@ def stand_still(
     return reward
 
 
+def hip_default_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Penalize hip joint positions that deviate from their default values."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_error = (
+        asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    )
+    return torch.sum(torch.square(joint_error), dim=1)
+
+
+def run_still_no_wheels_l1(
+    env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg
+) -> torch.Tensor:
+    """Penalize leg joint offsets while a planar velocity command is active."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    joint_error = (
+        asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    )
+    command = env.command_manager.get_command(command_name)
+    return torch.sum(torch.abs(joint_error), dim=1) * (torch.linalg.norm(command[:, :2], dim=1) > 0.1)
+
+
 def joint_pos_penalty(
     env: ManagerBasedRLEnv,
     command_name: str,
@@ -425,13 +446,15 @@ def feet_contact_without_cmd(env: ManagerBasedRLEnv, command_name: str, sensor_c
     return reward
 
 
-def feet_stumble(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+def feet_stumble(
+    env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, force_ratio: float = 4.0
+) -> torch.Tensor:
     # extract the used quantities (to enable type-hinting)
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     forces_z = torch.abs(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2])
     forces_xy = torch.linalg.norm(contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :2], dim=2)
     # Penalize feet hitting vertical surfaces
-    reward = torch.any(forces_xy > 4 * forces_z, dim=1).float()
+    reward = torch.any(forces_xy > force_ratio * forces_z, dim=1).float()
     reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
     return reward
 
