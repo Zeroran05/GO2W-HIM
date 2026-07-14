@@ -107,6 +107,24 @@ python scripts/play_him.py \
   --real_time
 ```
 
+## Preview Terrain
+
+Open the complete 10-by-20 RobotLab training terrain without spawning robots:
+
+```bash
+python scripts/preview_robotlab_terrain.py --device cuda:0
+```
+
+Use a smaller grid when only checking terrain generation and rendering:
+
+```bash
+python scripts/preview_robotlab_terrain.py \
+  --device cuda:0 \
+  --rows 5 \
+  --cols 10 \
+  --border-width 10
+```
+
 ## Logs and Checkpoints
 
 Open TensorBoard:

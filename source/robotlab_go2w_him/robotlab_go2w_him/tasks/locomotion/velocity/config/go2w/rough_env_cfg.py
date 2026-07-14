@@ -42,7 +42,7 @@ class UnitreeGo2WHIMActionsCfg:
         action_scale={".*_hip_joint": 0.125, ".*": 0.25},
         vel_scale=5.0,
         decimation=4,
-        enable_delay=False,
+        enable_delay=True,
         preserve_order=True,
     )
 
@@ -151,6 +151,11 @@ class UnitreeGo2WRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     actions: UnitreeGo2WHIMActionsCfg = UnitreeGo2WHIMActionsCfg()
     observations: UnitreeGo2WHIMObservationsCfg = UnitreeGo2WHIMObservationsCfg()
     rewards: UnitreeGo2WRewardsCfg = UnitreeGo2WRewardsCfg()
+
+    # Emit per-term reward statistics for the HIM runner's iteration log.
+    debug_reward_terms = True
+    debug_reward_interval = 48
+    debug_reward_top_k = 5
 
     base_link_name = "base"
     foot_link_name = ".*_foot"
