@@ -31,7 +31,7 @@ def get_go2w_him_train_cfg() -> dict:
         "runner": {
             "policy_class_name": "HIMActorCritic",
             "algorithm_class_name": "HIMPPO",
-            "num_steps_per_env": 48,
+            "num_steps_per_env": 24,
             "max_iterations": 20000,
             "save_interval": 200,
             "experiment_name": "robotlab_go2w_him",
