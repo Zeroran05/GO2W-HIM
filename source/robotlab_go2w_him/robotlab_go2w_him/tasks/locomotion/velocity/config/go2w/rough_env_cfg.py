@@ -21,7 +21,7 @@ from robotlab_go2w_him.assets import ROBOTLAB_GO2W_CFG  # isort: skip
 
 
 # Single switch for the 3D occupancy scanner, observation group, and HIM encoder.
-USE_OCCUPANCY = False
+USE_OCCUPANCY = True
 
 
 GO2W_JOINT_NAMES = [
